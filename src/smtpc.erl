@@ -39,7 +39,7 @@
 
 -export([connect/1,help/1,noop/1,quit/1,rcpt/2,rset/1,vrfy/2]).
 -export([connect/2,data/2,ehlo/2,etrn/2,expn/2,helo/2,mail/2]).
--export([sendmail/3,sendmail/4,sendmail/5,sendmail/6]).
+-export([sendmail/3,sendmail/4,sendmail/5,sendmail/6, sendmail/9]).
 
 %%-------------------------------------------------------------------------
 %% @spec (IpAddress::term()) -> {ok,Pid::pid()} | {error,Reason::atom()}
@@ -161,6 +161,10 @@ rset(Pid) -> gen_fsm:sync_send_event(Pid, rset).
 %%--------------------------------------------------------------------
 vrfy(Pid,Address) -> gen_fsm:sync_send_event(Pid, {vrfy,Address}).
 
+auth(Pid, User, Password) -> gen_fsm:sync_send_event(Pid, {auth, User, Password}).
+
+stop(Pid) -> gen_fsm:sync_send_all_state_event(Pid, close).
+
 %%--------------------------------------------------------------------
 %% Function: sendmail(IPAddress,Host,From,To,Message)
 %%           IPAddress = term() tuple, i.e {10,1,1,3}
@@ -186,3 +190,19 @@ sendmail(IPAddress,Port,Host,From,To,Message) ->
 	data(Pid,Message),
 	quit(Pid),
 	ok.
+
+sendmail(IPAddress, Port, Host, From, To, User, Password, Subject, Message) ->
+    {ok, Pid}  = connect(IPAddress, Port),
+    try
+        ehlo(Pid, Host),
+        auth(Pid, User, Password),
+        mail(Pid, From),
+        rcpt(Pid, To),
+        data(Pid, {To, Subject, Message}),
+        quit(Pid)
+    catch Type:Err ->
+              error_logger:format("~p:~p error: ~p/~p~n~p~n", [?MODULE, ?LINE, Type, Err,
+                                                               erlang:get_stacktrace()]),
+              stop(Pid) 
+    end.
+        

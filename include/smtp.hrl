@@ -18,39 +18,40 @@
 -define(TIMEOUT,   300000).
 
 -record(smtpc,{
-	socket = [],
-	features = [],
-	type = smtp, % smtp server type: [smtp:esmtp]
-	state = helo % State of command, [helo,mail,rcpt,data]
-	}).
+               socket = [],
+               auth = [],
+               features = [],
+               type = smtp, % smtp server type: [smtp:esmtp]
+               state = helo % State of command, [helo,mail,rcpt,data]
+              }).
 
 -record(smtpd_fsm,{
-	socket      = [],
-	addr        = [],
-	relay       = false,
-	options     = [],
-	buff        = <<>>,
-	line        = [],
-	cmd         = undefined,
-	param       = undefined,
-	host        = undefined,
-	mail        = undefined,
-	rcpt        = undefined,
-	to          = undefined,
-	messagename = undefined,
-	data        = undefined
-	}).
+                   socket      = [],
+                   addr        = [],
+                   relay       = false,
+                   options     = [],
+                   buff        = <<>>,
+                   line        = [],
+                   cmd         = undefined,
+                   param       = undefined,
+                   host        = undefined,
+                   mail        = undefined,
+                   rcpt        = undefined,
+                   to          = undefined,
+                   messagename = undefined,
+                   data        = undefined
+                  }).
 
 -record(smtpd_state, {
-                listener,       % Listening socket
-                acceptor,       % Asynchronous acceptor's internal reference
-                module          % FSM handling module
-               }).
+                      listener,       % Listening socket
+                      acceptor,       % Asynchronous acceptor's internal reference
+                      module          % FSM handling module
+                     }).
 
 -record(outgoing_smtp,{
-	rcpt       = [],
-	tries      = 0,
-	next_retry = [],
-	response   = []
-	}).
+                       rcpt       = [],
+                       tries      = 0,
+                       next_retry = [],
+                       response   = []
+                      }).
 

@@ -87,17 +87,52 @@ smtp_cmd({helo, Name}, From, State)->
 %%%----------------------------------------------------------------------
 smtp_cmd({ehlo, Name}, From, State) ->
     Msg = "EHLO" ++ [32] ++ Name,
+    ?D(Msg),
     write(State#smtpc.socket, Msg),
     case read(State#smtpc.socket) of
-	{250, Resp} -> 
-	    Strs = [string:sub_string(X,5) || X <- string:tokens(Resp, "\r\n")],
-	    {reply, ok, smtp_cmd, State#smtpc{features = tl(Strs),state=mail}};
+	{250, Resp} ->
+        ?D({250, Resp}),
+        NewState = lists:foldl(fun("250-AUTH" ++ Rest, Acc) ->
+                                       AuthTypes = string:tokens(Rest, " "),
+                                       Acc#smtpc{auth = AuthTypes, state = auth};
+                                  ("250"++ Feature, Acc) ->
+                                       Features = Acc#smtpc.features,
+                                       Acc#smtpc{features = [string:sub_string(Feature, 2)|Features]};
+                                  (_Other, Acc) ->
+                                       Acc
+                               end, State#smtpc{state = mail}, string:tokens(Resp, "\r\n")),
+        ?D(NewState),
+%% 	    Strs = [string:sub_string(X,5) || X <- string:tokens(Resp, "\r\n")],
+	    {reply, ok, smtp_cmd, NewState};
 	{Code, Resp} -> 
+        ?D({Code, Resp}),
 		gen_fsm:reply(From,{Code,Resp}),
 	    {reply,ok,smtp_cmd, State};
 	Error -> 
+         ?D(Error),
 	    {stop, Error, [], []}
     end;
+
+%%%----------------------------------------------------------------------
+%%% AUTH Command
+%%%----------------------------------------------------------------------
+smtp_cmd({auth, User, Password}, _From, State=#smtpc{auth = AuthTypes, state = auth}) ->
+    AuthType = type(AuthTypes),
+    Res = case AuthType of
+              'plain' -> auth_plain(User, Password, State#smtpc.socket);
+              'login' -> auth_login(User, Password, State#smtpc.socket);
+              _ -> throw("auth type not supported")
+          end,    
+    case Res of
+        ok -> 
+            {reply,ok,smtp_cmd, State#smtpc{state = mail}};
+        Error -> 
+            ?D(Error),
+            {stop, Error, [], []}
+    end;
+        
+            
+    
 %%%----------------------------------------------------------------------
 %%% ETRN Command
 %%%----------------------------------------------------------------------
@@ -253,11 +288,20 @@ smtp_cmd({vrfy, Address}, From, State) ->
 %%% DATA Command
 %%%----------------------------------------------------------------------
 smtp_cmd({data,Message}, From, State) ->
+    ?D(Message),
     Msg = "DATA",
     write(State#smtpc.socket, Msg),
     case read(State#smtpc.socket) of
 	{354, _Resp} -> 
-	    write(State#smtpc.socket, Message ++ ?SMTP_DATA_END),
+        Body = case Message of
+                   {To, Subject, Text} ->
+                       ToStr = "To: " ++ To ++ ?CRLF,
+                       SubjectStr = "Subject: " ++ Subject ++ ?CRLF,
+                       ToStr ++ SubjectStr ++ ?CRLF ++ Text;
+                   _ ->
+                       Message
+               end,
+	    write(State#smtpc.socket, Body ++ ?SMTP_DATA_END),
     	case read(State#smtpc.socket) of
 			{250, DataResp} -> 
 				gen_fsm:reply(From,{250,DataResp}),
@@ -335,6 +379,8 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 %%--------------------------------------------------------------------
 read(Socket) -> read(Socket, <<>>).
 read(Socket,Packet) ->
+    %% FIXME Process may hang here when there is no response from 
+    %% remote SMTP server.
 	receive
 		{tcp,Socket,Bin} ->
 			NewPacket = <<Packet/binary,Bin/binary>>,
@@ -346,7 +392,8 @@ read(Socket,Packet) ->
 					parse(Line);
 				_ -> read(Socket,NewPacket)
 			end;
-		{tcp_closed, Socket} -> {error,socket_closed}
+		{tcp_closed, Socket} -> {error,socket_closed};
+        Err -> ?D(Err), {error,socket_closed}
 	end.
 
 %%--------------------------------------------------------------------
@@ -382,3 +429,33 @@ write(Socket,Msg) ->
 	end.
 
 set_socket_opts(Socket) -> inet:setopts(Socket, [{active, once}, binary]).
+
+
+
+
+type(AuthTypes) ->
+    case lists:member("PLAIN", AuthTypes) of
+        true -> 'plain';
+        _ ->  case lists:member("LOGIN", AuthTypes) of
+                  true -> 'login';
+                  _ -> other
+              end
+    end.              
+
+auth_plain(User, Password, Socket) ->
+    Plain = User ++ [0] ++ User ++ [0] ++ Password,
+    Msg = "AUTH PLAIN" ++ [32] ++  binary_to_list(base64:encode(Plain)),
+    ?D(Msg),
+    write(Socket, Msg),
+    case read(Socket) of
+        {235, Resp} ->
+            ?D(Resp),
+            ok;
+        %% {530, "Access Denied"} when User or Password is wrong
+        Err ->
+            ?D(Err),
+            {error, Err}
+    end.
+
+auth_login(User, Password, Socket) ->
+    to_do.
