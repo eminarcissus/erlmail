@@ -33,3 +33,14 @@
 	cmd  = [],
 	data = []
 	}).
+
+-record(popc_fsm,{
+    socket = [],
+    socket_type,
+    state = authorization,  % [AUTHORIZATION,TRANSACTION,UPDATE]
+    capability = [],
+    mailbox = [],
+    mail = [],
+    encrypt = plain,
+    peer = []
+    }).

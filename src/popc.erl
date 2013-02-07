@@ -34,4 +34,54 @@
 %%%
 %%%---------------------------------------------------------------------------------------
 -module(popc).
--author('simpleenigma@gmail.com').
+-author('cao.xu@rytong.com').
+
+
+-export([connect/2,
+         connect/3,
+         login/3,
+         stat/1,
+         list/1,
+         list/2,
+         retrieve/2]).
+
+-export([connect/0]).
+%% ------------------------------------------
+%% Set up a connection to a POP3 server
+%% ------------------------------------------
+
+
+connect(IpAddress, Port) ->
+    connect(IpAddress, Port, []).
+connect(IpAddress, Port, Options) ->
+    popc_fsm:start_link(IpAddress, Port, Options).
+
+login(Pid, User, Password) ->
+    gen_fsm:sync_send_event(Pid, {auth, User, Password}, infinity).
+
+stat(Pid) ->
+     gen_fsm:sync_send_event(Pid, stat, infinity).
+
+list(Pid) ->
+    gen_fsm:sync_send_event(Pid, {list, all}, infinity).
+
+list(Pid, MessageId) ->
+    gen_fsm:sync_send_event(Pid, {list, MessageId}, infinity).
+
+retrieve(Pid, MessageId) ->
+    gen_fsm:sync_send_event(Pid, {retr, MessageId}, infinity).
+
+
+
+
+
+
+
+
+
+
+
+
+
+connect() -> connect("mail.rytong.com", 995, [ssl]).
+
