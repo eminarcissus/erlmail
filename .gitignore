@@ -1,2 +1,3 @@
 # Ignore beam files
 *.beam
+ebin/*.app
