@@ -23,7 +23,13 @@ clean-doc:
 	rm -fv doc/edoc-info
 	rm -fv doc/*.css
 
+test: all
+	erlc -o test/ test/*.erl
+	erl -noshell -noinput -pa ebin test -eval 'eunit:test("test", [verbose]), init:stop().'
+
 run:
 	$(ERL) -pa `pwd`/ebin \
 	-boot start_sasl \
 	-sname $(NODE_NAME)
+
+.PHONY: all doc clean run test
