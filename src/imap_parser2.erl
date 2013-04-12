@@ -66,9 +66,15 @@ parse_command(S) ->
 %%                   literal
 %%
 %% astring         = 1*ASTRING-CHAR / string
-%%
+astring(S) ->
+    case lists:splitwith(fun is_ASTRING_CHAR/1, S) of
+        {[],_} -> string(S);
+        {_Astring,_S2}=R -> R
+    end.
+
 %% ASTRING-CHAR   = ATOM-CHAR / resp-specials
-%%
+is_ASTRING_CHAR(C) -> is_ATOM_CHAR(C) orelse is_resp_special(C).
+
 %% atom            = 1*ATOM-CHAR
 atom(S) ->
     case lists:splitwith(fun is_ATOM_CHAR/1, S) of
@@ -298,9 +304,9 @@ flag("\\"++S) ->
     {{flag, FlagName}, S2};
 flag(S) ->
     {FlagKeyword,S2} = atom(S),
-    {{flag_keyword, FlagKeyword}, S2};
-flag(S) ->
-    throw({parser_error, "Syntax error in flag, near \""++S++"\""}).
+    {{flag_keyword, FlagKeyword}, S2}.
+%% flag(S) ->
+%%     throw({parser_error, "Syntax error in flag, near \""++S++"\""}).
 
 
 
@@ -311,6 +317,9 @@ flag(S) ->
 %%                     ; flag-extension flags except as defined by
 %%                     ; future standard or standards-track
 %%                     ; revisions of this specification.
+flag_extension("\\"++S) -> atom(S);
+flag_extension(S) ->
+    throw({parser_error, "Syntax error: Expected flag near '"++S++"'"}).
 %%
 %% flag-fetch      = flag / "\Recent"
 %%
@@ -344,7 +353,9 @@ is_list_wildcard(_) -> false.
 %%
 %% literal         = "{" number "}" CRLF *CHAR8
 %%                     ; Number represents the number of CHAR8s
-%%
+literal_p1(S) -> throw('TODO').
+
+
 %% login           = "LOGIN" SP userid SP password
 %%
 %% lsub            = "LSUB" SP mailbox SP list-mailbox
@@ -365,7 +376,9 @@ is_list_wildcard(_) -> false.
 %%                     ; is considered to be INBOX and not an astring.
 %%                     ;  Refer to section 5.1 for further
 %%                     ; semantic details of mailbox names.
-mailbox(_) -> throw('TODO').
+mailbox(S) ->
+    %% TODO: Special handling of "INBOX" (case insensitivity)
+    astring(S).
 
 %% mailbox-data    =  "FLAGS" SP flag-list / "LIST" SP mailbox-list /
 %%                    "LSUB" SP mailbox-list / "SEARCH" *(SP nz-number) /
@@ -382,10 +395,13 @@ mailbox_data_p1(W,S) ->
 
 %% mailbox-list    = "(" [mbx-list-flags] ")" SP
 %%                    (DQUOTE QUOTED-CHAR DQUOTE / nil) SP mailbox
-mailbox_list("()"++S) -> {'TODO-mailbox_list', []};
+mailbox_list("()"++S) -> mailbox_list_p3([], S);
 mailbox_list("("++S) ->
     {Mailboxes,S2} = collect_space_separated(fun mbx_list_flags/1, S),
-    S3 = require_one_space(S2),
+    mailbox_list_p3(Mailboxes, expect_char($), S2)).
+
+mailbox_list_p3(Mailboxes, S) ->
+    S3 = require_one_space(S),
     case S3 of
         "\""++S4 ->
             case quoted_p1(S4) of
@@ -410,7 +426,10 @@ mailbox_list("("++S) ->
 %% mbx-list-flags  = *(mbx-list-oflag SP) mbx-list-sflag
 %%                   *(SP mbx-list-oflag) /
 %%                   mbx-list-oflag *(SP mbx-list-oflag)
-mbx_list_flags(_) -> throw('TODO').
+mbx_list_flags(S) ->
+    {List, S2} = collect_space_separated(fun flag_extension/1, S),
+    %% TODO: Check that at most one of \Noselect, \Marked, \Unmarked is present.
+    {{'todo-mbc-list-flags', List}, S2}.
 
 %%
 %% mbx-list-oflag  = "\Noinferiors" / flag-extension
@@ -466,7 +485,7 @@ mbx_list_flags(_) -> throw('TODO').
 %% quoted          = DQUOTE *QUOTED-CHAR DQUOTE
 quoted_p1(S) ->quoted_p1(S, []).
 
-quoted_p1([$"|_]=S, Acc) -> {lists:reverse(Acc), S};
+quoted_p1([$"|S], Acc) -> {lists:reverse(Acc), S};
 quoted_p1([$\\,$\\|S], Acc) -> quoted_p1(S, [$\\|Acc]);
 quoted_p1([$\\,$"|S], Acc) -> quoted_p1(S, [$"|Acc]);
 quoted_p1([$\\,_]=S, _Acc) ->
@@ -522,7 +541,10 @@ response_fatal_p2(_) -> throw('TODO').
 
 %%
 %% response-tagged = tag SP resp-cond-state CRLF
-response_tagged(S) -> throw({'TODO', S}).
+response_tagged(S) ->
+    {Tag,S2} = tag(S),
+    {Cond, S3} = resp_cond_state(require_one_space(S2)),
+    {{'TODO-response_tagged', Tag, Cond}, S3}.
 
 %% resp-cond-auth  = ("OK" / "PREAUTH") SP resp-text
 %%                     ; Authentication condition
@@ -534,6 +556,10 @@ resp_cond_bye_p1(S) -> {'TODO-bye', require_one_space(S)}.
 
 %% resp-cond-state = ("OK" / "NO" / "BAD") SP resp-text
 %%                     ; Status condition
+resp_cond_state(S) ->
+    {W,S2} = first_lowercase_word(S),
+    resp_cond_state_p1(W,S2).
+
 resp_cond_state_p1("ok",S)  -> {'TODO-ok', require_one_space(S)};
 resp_cond_state_p1("no",S)  -> {'TODO-no', require_one_space(S)};
 resp_cond_state_p1("bad",S) -> {'TODO-bad', require_one_space(S)}.
@@ -647,11 +673,24 @@ store_p1(_) -> throw('TODO').
 %%                   (flag-list / (flag *(SP flag)))
 %%
 %% string          = quoted / literal
-%%
+string("\""++S) -> quoted_p1(S);
+string("{"++S)  -> literal_p1(S);
+string(S) ->
+    throw({parser_error, "Syntax error: expected string, but got '"++S++"'"}).
+
 %% subscribe       = "SUBSCRIBE" SP mailbox
 %%
 %% tag             = 1*<any ASTRING-CHAR except "+">
-%%
+tag(S) ->
+    case lists:splitwith(fun is_ASTRING_CHAR_not_plus/1, S) of
+        {[],_} -> throw({parser_error, "Syntax error near '"++S++"': Expected tag."});
+        {_Tag,_S2}=R -> R
+    end.
+
+is_ASTRING_CHAR_not_plus($+) -> false;
+is_ASTRING_CHAR_not_plus(C) -> is_ASTRING_CHAR(C).
+
+
 %% text            = 1*TEXT-CHAR
 %%
 %% TEXT-CHAR       = <any CHAR except CR and LF>
@@ -694,11 +733,15 @@ require_one_space([$\s | S]) -> S;
 require_one_space(S) ->
     throw({parser_error, "Exactly one space expected, but got '"++S++"'"}).
 
+expect_char(C, [C|S]) -> S;
+expect_char(C, S) ->
+    throw({parser_error, "Syntax error: Expected '"++[C]++"', but got '"++S++"'"}).
+
 collect_space_separated(F, S) ->
     {First, S2} = F(S),
-    collect_space_separated(F, S, [First]).
+    collect_space_separated(F, S2, [First]).
 collect_space_separated(F, " "++S, Acc) ->
     {Item, S2} = F(S),
-    collect_space_separated(F, S, [Item|Acc]);
+    collect_space_separated(F, S2, [Item|Acc]);
 collect_space_separated(_F, S, Acc) ->
     {lists:reverse(Acc), S}.
