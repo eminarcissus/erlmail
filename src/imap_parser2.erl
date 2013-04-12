@@ -6,8 +6,12 @@
 %%% The present implementation is a recursive-descent parser based directly
 %%% on the RFC3501 (IMAP4rev1) syntax specification.
 
-%-export([parse/1, parse_and_scan/1, format_error/1]).
--compile(export_all). % For now
+-export([parse_response/1,
+         parse_response_line/1,
+         parse_command/1]). % , parse_and_scan/1, format_error/1]).
+%-compile(export_all). % For now
+
+-include("imap.hrl").
 
 %% Parser combinators
 -define(SEQ(A,B), (fun(In1)-> {Res1,Rest1} = A(In1),
@@ -15,9 +19,20 @@
                               {[Res1, Res2], Rest2}
                    end)).
 
+-define(IS_resp_cond_state_FIRST(W),
+        (W=:="ok" orelse W=:="no" orelse W=:="bad")).
+
+parse_response(S) ->
+    response(S).
+
+parse_response_line(S) ->
+    response_line(S).
+
+parse_command(S) ->
+    'TODO'. % command(S).
 
 %% Productions, alphabetically, as they occur in RFC3501.
-%% Naming convention: A function name suffix of "_m1", "_m2", etc.,
+%% Naming convention: A function name suffix of "_p1", "_p2", etc.,
 %% means "the first 1 (, 2, ...) tokens of the production have already
 %% been processed". This is used for a number of productions with
 %% fixed prefixes.
@@ -55,11 +70,26 @@
 %% ASTRING-CHAR   = ATOM-CHAR / resp-specials
 %%
 %% atom            = 1*ATOM-CHAR
-%%
+atom(S) ->
+    case lists:splitwith(fun is_ATOM_CHAR/1, S) of
+        {[],_} -> throw({parser_error, "Syntax error near '"++S++"': Expected atom."});
+        {_Atom,_S2}=R -> R
+    end.
+
 %% ATOM-CHAR       = <any CHAR except atom-specials>
-%%
+is_ATOM_CHAR(C) ->
+    not is_atom_special(C).
+
 %% atom-specials   = "(" / ")" / "{" / SP / CTL / list-wildcards /
 %%                   quoted-specials / resp-specials
+is_atom_special($() -> true;
+is_atom_special($)) -> true;
+is_atom_special(${) -> true;
+is_atom_special($\s) -> true;
+is_atom_special(C) when C<$\s -> true;
+is_atom_special(C) ->
+    is_list_wildcard(C) orelse is_quoted_special(C) orelse is_resp_special(C).
+
 %%
 %% authenticate    = "AUTHENTICATE" SP auth-type *(CRLF base64)
 %%
@@ -147,7 +177,9 @@
 %%                     ; and LOGINDISABLED capabilities
 %%                     ; Servers which offer RFC 1730 compatibility MUST
 %%                     ; list "IMAP4" as the first capability.
-%%
+capability_data_p1(S) ->
+    throw('TODO').
+
 %% CHAR8           = %x01-ff
 %%                     ; any OCTET except NUL, %x00
 %%
@@ -173,22 +205,22 @@ command_select(S) ->
         {"CHECK", Rest}   -> {check, Rest};
         {"CLOSE", Rest}   -> {close, Rest};
         {"EXPUNGE", Rest} -> {expunge, Rest};
-        {"COPY", Rest}    -> copy_m1(Rest);
-        {"FETCH", Rest}   -> fetch_m1(Rest);
-        {"STORE", Rest}   -> store_m1(Rest);
-        {"UID", Rest}     -> uid_m1(Rest);
-        {"SEARCH", Rest}  -> search_m1(Rest);
+        {"COPY", Rest}    -> copy_p1(Rest);
+        {"FETCH", Rest}   -> fetch_p1(Rest);
+        {"STORE", Rest}   -> store_p1(Rest);
+        {"UID", Rest}     -> uid_p1(Rest);
+        {"SEARCH", Rest}  -> search_p1(Rest);
         {Other, _Rest} ->
             throw({parser_error, "Syntax error near '"++Other++"', expecting command"})
     end.
 
 %%
 %% continue-req    = "+" SP (resp-text / base64) CRLF
-continue_req_m1(_) -> throw('TODO').
+continue_req_p1(_) -> throw('TODO').
 
 
 %% copy            = "COPY" SP sequence-set SP mailbox
-copy_m1(_) -> throw('TODO').
+copy_p1(_) -> throw('TODO').
 
 %%
 %% create          = "CREATE" SP mailbox
@@ -247,7 +279,7 @@ copy_m1(_) -> throw('TODO').
 %%
 %% fetch           = "FETCH" SP sequence-set SP ("ALL" / "FULL" / "FAST" /
 %%                   fetch-att / "(" fetch-att *(SP fetch-att) ")")
-fetch_m1(_) -> throw('TODO').
+fetch_p1(_) -> throw('TODO').
 
 %% fetch-att       = "ENVELOPE" / "FLAGS" / "INTERNALDATE" /
 %%                   "RFC822" [".HEADER" / ".SIZE" / ".TEXT"] /
@@ -261,7 +293,17 @@ fetch_m1(_) -> throw('TODO').
 %% flag            = "\Answered" / "\Flagged" / "\Deleted" /
 %%                   "\Seen" / "\Draft" / flag-keyword / flag-extension
 %%                     ; Does not include "\Recent"
-%%
+flag("\\"++S) ->
+    {FlagName,S2} = atom(S),
+    {{flag, FlagName}, S2};
+flag(S) ->
+    {FlagKeyword,S2} = atom(S),
+    {{flag_keyword, FlagKeyword}, S2};
+flag(S) ->
+    throw({parser_error, "Syntax error in flag, near \""++S++"\""}).
+
+
+
 %% flag-extension  = "\" atom
 %%                     ; Future expansion.  Client implementations
 %%                     ; MUST accept flag-extension flags.  Server
@@ -275,7 +317,11 @@ fetch_m1(_) -> throw('TODO').
 %% flag-keyword    = atom
 %%
 %% flag-list       = "(" [flag *(SP flag)] ")"
-%%
+flag_list("()"++S) -> {{'TODO-flags', []}, S};
+flag_list("("++S) ->
+    {Flags, Rest} = collect_space_separated(fun flag/1, S),
+    {{'TODO-flags', Flags}, Rest}.
+
 %% flag-perm       = flag / "\*"
 %%
 %% greeting        = "*" SP (resp-cond-auth / resp-cond-bye) CRLF
@@ -291,6 +337,10 @@ fetch_m1(_) -> throw('TODO').
 %% list-char       = ATOM-CHAR / list-wildcards / resp-specials
 %%
 %% list-wildcards  = "%" / "*"
+is_list_wildcard($%) -> true;
+is_list_wildcard($*) -> true;
+is_list_wildcard(_) -> false.
+
 %%
 %% literal         = "{" number "}" CRLF *CHAR8
 %%                     ; Number represents the number of CHAR8s
@@ -315,18 +365,53 @@ fetch_m1(_) -> throw('TODO').
 %%                     ; is considered to be INBOX and not an astring.
 %%                     ;  Refer to section 5.1 for further
 %%                     ; semantic details of mailbox names.
-%%
+mailbox(_) -> throw('TODO').
+
 %% mailbox-data    =  "FLAGS" SP flag-list / "LIST" SP mailbox-list /
 %%                    "LSUB" SP mailbox-list / "SEARCH" *(SP nz-number) /
 %%                    "STATUS" SP mailbox SP "(" [status-att-list] ")" /
 %%                    number SP "EXISTS" / number SP "RECENT"
-%%
+mailbox_data_p1("flags",S) -> flag_list(require_one_space(S));
+mailbox_data_p1("list",S) -> mailbox_list(require_one_space(S));
+mailbox_data_p1("lsub",S) -> throw('TODO');
+mailbox_data_p1("search",S) -> throw('TODO');
+mailbox_data_p1("status",S) -> throw('TODO');
+mailbox_data_p1(W,S) ->
+    throw({parser_error, "Unknown response item \""++W++"\""}).
+%% TODO: Handle number case.
+
 %% mailbox-list    = "(" [mbx-list-flags] ")" SP
 %%                    (DQUOTE QUOTED-CHAR DQUOTE / nil) SP mailbox
-%%
+mailbox_list("()"++S) -> {'TODO-mailbox_list', []};
+mailbox_list("("++S) ->
+    {Mailboxes,S2} = collect_space_separated(fun mbx_list_flags/1, S),
+    S3 = require_one_space(S2),
+    case S3 of
+        "\""++S4 ->
+            case quoted_p1(S4) of
+                {[C],S5} -> Foo=C;
+                {Cs,_} ->
+                    Foo=S5=dummy,
+                    throw({parser_error, "Syntax error: string must be of length 1 near \""++S4++"\""})
+            end;
+        _ ->
+            case first_lowercase_word(S3) of
+                {"nil", S5} -> Foo=nil;
+                {W,_} ->
+                    Foo=S5=dummy,
+                    throw({parser_error, "Syntax error near '"++W++"'"})
+            end
+    end,
+    S6 = require_one_space(S5),
+    {Mailbox,S7} = mailbox(S6),
+    {{'TODO-mailbox-list', Mailboxes, Foo, Mailbox}, S7}.
+
+
 %% mbx-list-flags  = *(mbx-list-oflag SP) mbx-list-sflag
 %%                   *(SP mbx-list-oflag) /
 %%                   mbx-list-oflag *(SP mbx-list-oflag)
+mbx_list_flags(_) -> throw('TODO').
+
 %%
 %% mbx-list-oflag  = "\Noinferiors" / flag-extension
 %%                     ; Other flags; multiple possible per LIST response
@@ -379,44 +464,65 @@ fetch_m1(_) -> throw('TODO').
 %% password        = astring
 %%
 %% quoted          = DQUOTE *QUOTED-CHAR DQUOTE
-%%
+quoted_p1(S) ->quoted_p1(S, []).
+
+quoted_p1([$"|_]=S, Acc) -> {lists:reverse(Acc), S};
+quoted_p1([$\\,$\\|S], Acc) -> quoted_p1(S, [$\\|Acc]);
+quoted_p1([$\\,$"|S], Acc) -> quoted_p1(S, [$"|Acc]);
+quoted_p1([$\\,_]=S, _Acc) ->
+    throw({parser_error, "Bad escape sequence near '"++S++"'"});
+quoted_p1([C|S], Acc) -> quoted_p1(S, [C|Acc]).
+
 %% QUOTED-CHAR     = <any TEXT-CHAR except quoted-specials> /
 %%                   "\" quoted-specials
 %%
 %% quoted-specials = DQUOTE / "\"
+is_quoted_special($") -> true;
+is_quoted_special($\\) -> true;
+is_quoted_special(_) -> false.
+
 %%
 %% rename          = "RENAME" SP mailbox SP mailbox
 %%                     ; Use of INBOX as a destination gives a NO error
 %%
 %% response        = *(continue-req / response-data) response-done
-response([$+ | S]) ->
-    ?SEQ(continue_req_m1, response_done)(S);
-response([$* | S]) ->
-    ?SEQ(response_data_m1, response_done)(S);
-response(X) ->
-    throw({parser_error, "Syntax error near '"++X++"', at beginning of response"}).
+response(_) -> throw('TODO').
+
+%% response_line is internal - not part of the RFC!
+response_line([$+ | S]) -> continue_req_p1(S);
+response_line([$* | S]) -> response_data_p1(S);
+response_line(S)        -> response_done(S).
 
 %%
 %% response-data   = "*" SP (resp-cond-state / resp-cond-bye /
 %%                   mailbox-data / message-data / capability-data) CRLF
-response_data_m1(S) -> response_data_m2(require_one_space(S)).
+response_data_p1(S) -> response_data_p2(require_one_space(S)).
 
-response_data_m2(_) -> throw('TODO').
+response_data_p2(S) ->
+    case first_lowercase_word(S) of
+        {[],_} -> throw('TODO'); % mailbox-data or message-data
+        {"bye",Rest} -> resp_cond_bye_p1(Rest); % TODO: eat CRLF?
+        {"capability",Rest} -> capability_data_p1(Rest);
+        {W,Rest} when ?IS_resp_cond_state_FIRST(W) ->
+            resp_cond_state_p1(W,Rest);
+        {W,Rest} ->
+            mailbox_data_p1(W,Rest)
+    end.
 
 
 %% response-done   = response-tagged / response-fatal
-response_done([$*|S]) -> response_fatal_m1(S);
+response_done([$*|S]) -> response_fatal_p1(S);
 response_done(S)      -> response_tagged(S).
 
 %% response-fatal  = "*" SP resp-cond-bye CRLF
 %%                     ; Server closes connection immediately
-response_fatal_m1(S) -> response_fatal_m2(require_one_space(S)).
+response_fatal_p1(S) -> response_fatal_p2(require_one_space(S)).
 
-response_fatal_m2(_) -> throw('TODO').
+response_fatal_p2(_) -> throw('TODO').
 
 %%
 %% response-tagged = tag SP resp-cond-state CRLF
-response_tagged(_) -> throw('TODO').
+response_tagged(S) -> throw({'TODO', S}).
 
 %% resp-cond-auth  = ("OK" / "PREAUTH") SP resp-text
 %%                     ; Authentication condition
@@ -424,12 +530,18 @@ response_tagged(_) -> throw('TODO').
 %%
 %%
 %% resp-cond-bye   = "BYE" SP resp-text
-%%
+resp_cond_bye_p1(S) -> {'TODO-bye', require_one_space(S)}.
+
 %% resp-cond-state = ("OK" / "NO" / "BAD") SP resp-text
 %%                     ; Status condition
-%%
+resp_cond_state_p1("ok",S)  -> {'TODO-ok', require_one_space(S)};
+resp_cond_state_p1("no",S)  -> {'TODO-no', require_one_space(S)};
+resp_cond_state_p1("bad",S) -> {'TODO-bad', require_one_space(S)}.
+
 %% resp-specials   = "]"
-%%
+is_resp_special($]) -> true;
+is_resp_special(_) -> false.
+
 %% resp-text       = ["[" resp-text-code "]" SP] text
 %%
 %% resp-text-code  = "ALERT" /
@@ -444,7 +556,7 @@ response_tagged(_) -> throw('TODO').
 %%
 %% search          = "SEARCH" [SP "CHARSET" SP astring] 1*(SP search-key)
 %%                     ; CHARSET argument to MUST be registered with IANA
-search_m1(_) -> throw('TODO').
+search_p1(_) -> throw('TODO').
 
 %% search-key      = "ALL" / "ANSWERED" / "BCC" SP astring /
 %%                   "BEFORE" SP date / "BODY" SP astring /
@@ -528,7 +640,7 @@ search_m1(_) -> throw('TODO').
 %% status-att-list =  status-att SP number *(SP status-att SP number)
 %%
 %% store           = "STORE" SP sequence-set SP store-att-flags
-store_m1(_) -> throw('TODO').
+store_p1(_) -> throw('TODO').
 
 %%
 %% store-att-flags = (["+" / "-"] "FLAGS" [".SILENT"]) SP
@@ -550,7 +662,7 @@ store_m1(_) -> throw('TODO').
 %% uid             = "UID" SP (copy / fetch / search / store)
 %%                     ; Unique identifiers used instead of message
 %%                     ; sequence numbers
-uid_m1(_) -> throw('TODO').
+uid_p1(_) -> throw('TODO').
 
 %% uniqueid        = nz-number
 %%                     ; Strictly ascending
@@ -572,11 +684,21 @@ uid_m1(_) -> throw('TODO').
 
 %%%==================== Helper functions ====================
 first_lowercase_word(S) -> first_lowercase_word(S, []).
-first_lowercase_word([C|Rest],Acc) when (C>=$A andalso C=<$Z);
-                                        (C>=$a andalso C=<$z) ->
+first_lowercase_word([C|Rest],Acc) when (C>=$a andalso C=<$z) ->
     first_lowercase_word(Rest, [C|Acc]);
+first_lowercase_word([C|Rest],Acc) when (C>=$A andalso C=<$Z) ->
+    first_lowercase_word(Rest, [C + ($a - $A) |Acc]);
 first_lowercase_word(L,Acc) -> {lists:reverse(Acc),L}.
 
 require_one_space([$\s | S]) -> S;
 require_one_space(S) ->
     throw({parser_error, "Exactly one space expected, but got '"++S++"'"}).
+
+collect_space_separated(F, S) ->
+    {First, S2} = F(S),
+    collect_space_separated(F, S, [First]).
+collect_space_separated(F, " "++S, Acc) ->
+    {Item, S2} = F(S),
+    collect_space_separated(F, S, [Item|Acc]);
+collect_space_separated(_F, S, Acc) ->
+    {lists:reverse(Acc), S}.
