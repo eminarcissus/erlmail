@@ -28,7 +28,7 @@ parse_response(S) ->
 parse_response_line(S) ->
     response_line(S).
 
-parse_command(S) ->
+parse_command(_S) ->
     'TODO'. % command(S).
 
 %% Productions, alphabetically, as they occur in RFC3501.
@@ -183,7 +183,7 @@ is_atom_special(C) ->
 %%                     ; and LOGINDISABLED capabilities
 %%                     ; Servers which offer RFC 1730 compatibility MUST
 %%                     ; list "IMAP4" as the first capability.
-capability_data_p1(S) ->
+capability_data_p1(_S) ->
     throw('TODO').
 
 %% CHAR8           = %x01-ff
@@ -353,7 +353,7 @@ is_list_wildcard(_) -> false.
 %%
 %% literal         = "{" number "}" CRLF *CHAR8
 %%                     ; Number represents the number of CHAR8s
-literal_p1(S) -> throw('TODO').
+literal_p1(_S) -> throw('TODO').
 
 
 %% login           = "LOGIN" SP userid SP password
@@ -386,10 +386,10 @@ mailbox(S) ->
 %%                    number SP "EXISTS" / number SP "RECENT"
 mailbox_data_p1("flags",S) -> flag_list(require_one_space(S));
 mailbox_data_p1("list",S) -> mailbox_list(require_one_space(S));
-mailbox_data_p1("lsub",S) -> throw('TODO');
-mailbox_data_p1("search",S) -> throw('TODO');
-mailbox_data_p1("status",S) -> throw('TODO');
-mailbox_data_p1(W,S) ->
+mailbox_data_p1("lsub", _S) -> throw('TODO');
+mailbox_data_p1("search", _S) -> throw('TODO');
+mailbox_data_p1("status", _S) -> throw('TODO');
+mailbox_data_p1(W, _S) ->
     throw({parser_error, "Unknown response item \""++W++"\""}).
 %% TODO: Handle number case.
 
@@ -406,7 +406,7 @@ mailbox_list_p3(Mailboxes, S) ->
         "\""++S4 ->
             case quoted_p1(S4) of
                 {[C],S5} -> Foo=C;
-                {Cs,_} ->
+                {_Cs,_} ->
                     Foo=S5=dummy,
                     throw({parser_error, "Syntax error: string must be of length 1 near \""++S4++"\""})
             end;

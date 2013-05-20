@@ -1,7 +1,7 @@
-{application, smtpd,
-    [{description, "Erlmail smtp daemon"},
+{application, erlmail,
+    [{description, "Erlmail application"},
      {vsn, "0.0.6"},
-     {modules, [aws_store,
+      {modules, [aws_store,
                 dets_store,
                 erlmail,
                 erlmail_antispam,
@@ -49,4 +49,6 @@
                ]},
      {mod, {erlmail_app, []}},
      {registered, []},
+     {env, [{smarthost, {{127,0,0,1},25}},
+            {ehlo, "localhost"}]},
      {applications, [kernel, stdlib]}]}.
