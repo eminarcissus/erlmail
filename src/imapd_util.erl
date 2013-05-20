@@ -381,7 +381,7 @@ parse_addresses([],Acc) -> lists:reverse(Acc);
 parse_addresses([#addr{} = H|T],Acc) ->
 	parse_addresses(T,[#address{addr_name=H#addr.description, addr_mailbox = H#addr.username, addr_host = H#addr.domainname} | Acc]);
 parse_addresses([H|T],Acc) ->
-	case regexp:split(H,"[<>@\"]") of
+	case re:split(H,"[<>@\"]") of
 		{ok,[_,PersonalName,MailBoxName,HostName,_]} -> 
 			parse_addresses(T,[#address{addr_name=PersonalName, addr_mailbox = MailBoxName, addr_host = HostName}|Acc]);
 		{ok,[_,PersonalName,_,MailBoxName,HostName,_]} -> 
@@ -544,7 +544,7 @@ re_split(String,RegExp,Space,Quote) ->
 						Other -> Other
 					end;
 				_ -> 
-					case regexp:match(String,RegExp) of
+					case re:match(String,RegExp) of
 						{match,Start,Length} when Start + Length >= length(String) -> 
 							lists:split(Pos,String);
 						{match,Start,Length} when Start < Pos -> 
@@ -557,7 +557,7 @@ re_split(String,RegExp,Space,Quote) ->
 						nomatch -> 
 							case lists:split(Pos,String) of
 								{O,T} -> 
-									case regexp:match(T,RegExp) of
+									case re:match(T,RegExp) of
 										{match,_,_} -> {O,imapd_util:clean(T)};
 										nomatch -> {O,T}
 									end;

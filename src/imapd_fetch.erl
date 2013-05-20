@@ -370,7 +370,7 @@ tokens(<<"body.peek[",Rest/binary>>,Acc) ->
 	String = binary_to_list(Rest),
 	Pos = string:chr(String,93),
 	{Sec,New} = lists:split(Pos,String),
-	{Next,Start,Count} = case regexp:match(New,"^<([0-9]+\.[0-9]+)>") of
+	{Next,Start,Count} = case re:match(New,"^<([0-9]+\.[0-9]+)>") of
 		{match,1,Length} -> 
 			{Size,New2} = lists:split(Length,New),
 			[S,C] = string:tokens(Size,[46,60,62]),
@@ -389,7 +389,7 @@ tokens(<<"body[",Rest/binary>>,Acc) ->
 	String = binary_to_list(Rest),
 	Pos = string:chr(String,93),
 	{Sec,New} = lists:split(Pos,String),
-	{Next,Start,Count} = case regexp:match(New,"^<([0-9]+\.[0-9]+)>") of
+	{Next,Start,Count} = case re:match(New,"^<([0-9]+\.[0-9]+)>") of
 		{match,1,Length} -> 
 			{Size,New2} = lists:split(Length,New),
 			[S,C] = string:tokens(Size,[46,60,62]),
@@ -476,7 +476,7 @@ body_sections(<<"text",Rest/binary>>,Part,Acc) ->
 body_sections(Bin,_Part,Acc) ->
 	String = binary_to_list(Bin),
 	RegExp = "^([0-9]\.)+",
-	case regexp:match(String,RegExp) of
+	case re:match(String,RegExp) of
 		{match,1,Length} -> 
 			{P,Next} = lists:split(Length,String),
 			Part = lists:map(fun(S) ->

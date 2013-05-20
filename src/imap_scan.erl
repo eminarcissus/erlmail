@@ -16,7 +16,7 @@
 %%% Regular Expression could be better.
 imap_string(String) ->
 	RegExp = "(([bB][oO][dD][yY])(\.[pP][eE][eE][kK])?)(\\\[(.)*\\\])(\\\<[0-9]+\\\>)?",
-	case regexp:match(String,RegExp) of
+	case re:match(String,RegExp) of
 		{match,_,_} ->
 			UString = unquote(String),
 			Prep = fetch_prep(UString),
@@ -93,7 +93,7 @@ type(Token) ->
 
 fetch_prep(String) ->
 	RegExp = "\{[0-9]+\}",
-	case regexp:matches(String,RegExp) of
+	case re:matches(String,RegExp) of
 		nomatch -> String;
 		{match,[]} -> String;
 		{match,Matches} -> 
@@ -118,10 +118,10 @@ fetch_matches(String,Matches) ->
 	lists:sort(L).
 
 unquote(String) -> 
-	{ok,S,_} = regexp:gsub(String,[34],[0]),
+	{ok,S,_} = re:gsub(String,[34],[0]),
 	S.
 requote(String) -> 
-	{ok,S,_} = regexp:gsub(String,[0],[34]),
+	{ok,S,_} = re:gsub(String,[0],[34]),
 	S.
 
 requote([H|T],Acc) ->

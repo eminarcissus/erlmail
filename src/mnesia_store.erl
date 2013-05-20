@@ -288,12 +288,12 @@ mlist(MailBoxName,{UserName,DomainName},Subscribed) ->
 		end,
 	case mnesia:sync_transaction(F) of
 		{atomic,List} -> 
-			{ok,Clean,_line} = regexp:gsub(MailBoxName,"%","?"),
-			 RegExp = regexp:sh_to_awk(Clean),
+			{ok,Clean,_line} = re:gsub(MailBoxName,"%","?"),
+			 RegExp = re:sh_to_awk(Clean),
 %			?D(RegExp),
 %			?D(List),
 			Filter = lists:filter(fun(Folder) -> 
-				case regexp:match(Folder,RegExp) of
+				case re:match(Folder,RegExp) of
 					{match,_,_} -> true;
 					nomatch -> false
 				end

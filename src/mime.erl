@@ -151,7 +151,7 @@ dec_addr2(Address,Addr) ->
 %% @end
 %%-------------------------------------------------------------------------
 headers(HeaderText) ->
-	{ok,H,_Lines} = regexp:gsub(HeaderText,"\r\n[\t ]"," "),
+	{ok,H,_Lines} = re:gsub(HeaderText,"\r\n[\t ]"," "),
 	Tokens = string:tokens(H,[13,10]),
 	headers(Tokens,[]).
 %%-------------------------------------------------------------------------
@@ -223,10 +223,10 @@ split_multipart(Boundary,Body) -> split_multipart(Boundary,Body,[]).
 %%-------------------------------------------------------------------------
 split_multipart(_Boundary,[],Acc) -> lists:reverse(Acc);
 split_multipart(Boundary,Body,Acc) -> 
-	case regexp:match(Body,Boundary) of
+	case re:match(Body,Boundary) of
 		{match,Start,Length} ->
 			{_Pre,New} = lists:split(Start + Length + 1,Body),
-			case regexp:match(New,Boundary) of
+			case re:match(New,Boundary) of
 				{match,Start2,_Length2} ->
 					{Part,Next} = lists:split(Start2 - 3,New),
 					 split_multipart(Boundary,Next,[Part|Acc]);

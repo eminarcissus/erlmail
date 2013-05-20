@@ -244,7 +244,7 @@ out(Command,Param,State) -> io:format("~p ~p ~p~n",[State#smtpd_fsm.addr,Command
 
 
 clean_email(String) -> 
-	case regexp:match(String,"<(.*)>") of
+	case re:match(String,"<(.*)>") of
 		{match,Start,Length} -> string:substr(String,Start+1,Length-2);
 		{error,Reason} -> {error,Reason}
 	end.
