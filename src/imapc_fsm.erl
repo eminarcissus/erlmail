@@ -36,7 +36,6 @@
 -module(imapc_fsm).
 -author('sjackson@simpleenigma.com').
 -include("../include/imap.hrl").
--import(imapc_util).
 -behavior(gen_fsm). % Finite State Machine
 
 -define(TIMEOUT,   300000).
