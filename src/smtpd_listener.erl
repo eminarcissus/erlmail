@@ -124,8 +124,7 @@ handle_info({inet_async, ListSock, Ref, {ok, CliSocket}},
             #smtpd_state{listener=ListSock, acceptor=Ref, module=Module} = State) ->
     case set_sockopt(ListSock, CliSocket) of
     ok ->
-        %% New client connected - spawn a new process using the simple_one_for_one
-        %% supervisor.
+        %% New client connected - spawn a new fsm process using the simple_one_for_one
         {ok, Pid} = smtpd_sup:start_client(),
         gen_tcp:controlling_process(CliSocket, Pid),
         %% Instruct the new FSM that it owns the socket.
