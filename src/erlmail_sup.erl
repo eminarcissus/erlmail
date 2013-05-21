@@ -61,6 +61,8 @@ init(_Args) ->
 
 
 children(List) -> 
+	%% Pass a list of servers, test whether server_unit_start in application env or not,
+	%% if so append child_spec to return list,otherwise none
 	Specs = lists:map(fun(C) -> 
 		S = "server_" ++ atom_to_list(C) ++ "_start", 
 		case application:get_env(erlmail,list_to_atom(S)) of
@@ -70,6 +72,8 @@ children(List) ->
 		end,List),
 	lists:flatten(Specs).
 
+%%Right now it only supports starting models predefined by the program.
+%%But with the help of children & child_spec,we could hot plugin models into the startup process
 
 child_spec(erlmail_store) -> {erlmail_store,{erlmail_store_sup,start_link,[]},permanent,5000,supervisor,[erlmail_store_sup]};
 child_spec(smtp)          -> {smtpd,{smtpd_sup,start_link,[]},permanent,5000,supervisor,[smtpd_sup]};
