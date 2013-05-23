@@ -43,11 +43,11 @@
 %% API functions
 -export([]).
 %% states
--export([smtp_wait_socket/2,smtp_cmd/3]).
+-export([smtp_cmd/3]).
 %% Testing Functions
 -export([]).
 %% gen_server callbacks
--export([init/1, handle_event/3, handle_sync_event/4, handle_info/2,handle_info/3, terminate/3, code_change/4]).
+-export([init/1, handle_event/3, handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
 
 %%%----------------------------------------------------------------------
@@ -65,17 +65,6 @@ start_link(Host,Port) -> gen_fsm:start_link(?MODULE, [Host,Port], []).
 %%% State functions
 %%%----------------------------------------------------------------------
 	
-%%%----------------------------------------------------------------------
-%%% Socket Wait functions
-%%%----------------------------------------------------------------------
-
-smtp_wait_socket(timeout,#smtpc{server=Server,port=Port}=State) ->
-	case gen_tcp:connect(Server,Port,[binary,{packet,0},{active,once}]) of 
-		{ok,Socket} -> 
-			{next_state,smtp_cmd,State#smtpc{socket=Socket,state=connected}};
-		{error,Reason} -> 
-			{error,Reason}
-	end.
 	
 %%%----------------------------------------------------------------------
 %%% HELO Command
@@ -347,29 +336,22 @@ smtp_cmd({info,Info}, From, State) ->
 %%% Callback functions from gen_fsm
 %%%----------------------------------------------------------------------
 
-
 init([Server,Port]) ->
-	{ok,smtp_wait_socket,#smtpc{server=Server,port=Port},0}.
+	case gen_tcp:connect(Server,Port,[binary,{packet,0},{active,once}]) of 
+		{ok,Socket} ->
+			case read(Socket) of
+				{220, Resp} -> {ok, smtp_cmd, #smtpc{socket=Socket,type=smtp_type(Resp)}};
+				{error,Reason} -> {error,Reason}
+			end;
+		{error,Reason} -> {error,Reason}
+	end.
 
-	
 handle_event(close, _AnyState, State) ->
     ok = gen_tcp:send(State#smtpc.socket, "quit\r\n"),
     {stop, i_have_quit, []}.
 
 handle_sync_event(rset, _From, _AnyState, State) ->
 	{reply, ok, smtp_cmd, State}.
-
-handle_info({tcp, Socket, Bin}, smtp_cmd, State#smtpc{state=connected,buff=Buff}) ->
-	NewPacket = <<Buff/binary,Bin/binary>>,
-	String = binary_to_list(Buff),
-	set_socket_opts(Socket),
-	case string:right(String,2) of
-		?CRLF -> 
-			Line = string:left(String,length(String) - 2),
-			{Code,Resp}=parse(Line),
-			{next_state,smtp_cmd,State#smtpd{state=before_helo,type=smtp_type(Resp),buff= <<>> }};
-		_ -> {next_state,smtp_cmd,State#smtpd{buff=NewPacket}};
-	end;
 
 handle_info(_Info, StateName, StateData) ->
     {next_state, StateName, StateData}.
