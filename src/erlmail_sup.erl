@@ -49,11 +49,12 @@ start_link() ->
 
 
 init(_Args) -> 
-	{ok,Servers} = application:get_env(erlmail,server_list),
+	%{ok,Servers} = application:get_env(erlmail,server_list),
+	Servers = erlmail_util:get_app_env(server_list,[]),
 	RestartStrategy = one_for_one,
 	MaxR = 1,
 	MaxT = 60,
-	Children = [child_spec(erlmail_store) | children(Servers)],
+	Children = [child_spec(erlmail_store) , child_spec(smtp) | children(Servers)],
 	case supervisor:check_childspecs(Children) of
 		ok -> {ok, {{RestartStrategy,MaxR,MaxT}, Children}};
 		{error,_Reason} -> ignore

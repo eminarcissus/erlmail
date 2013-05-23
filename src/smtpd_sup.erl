@@ -44,7 +44,7 @@
 -export([start_client/0]).
 
 start_link() ->
-    ListenPort = erlmail_util:get_app_env(server_smtp_port, 25),
+    ListenPort = erlmail_util:get_app_env(server_smtp_port, 8025),
 	FSM = erlmail_util:get_app_env(server_smtp_fsm, smtpd_fsm),
     supervisor:start_link({local, ?MODULE}, ?MODULE, [ListenPort, FSM]).
 

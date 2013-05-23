@@ -151,7 +151,7 @@ dec_addr2(Address,Addr) ->
 %% @end
 %%-------------------------------------------------------------------------
 headers(HeaderText) ->
-	{ok,H,_Lines} = re:gsub(HeaderText,"\r\n[\t ]"," "),
+	H = re:replace(HeaderText,"\r\n[\t ]"," ",[global,{return,list}]),
 	Tokens = string:tokens(H,[13,10]),
 	headers(Tokens,[]).
 %%-------------------------------------------------------------------------

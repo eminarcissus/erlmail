@@ -244,9 +244,12 @@ out(Command,Param,State) -> io:format("~p ~p ~p~n",[State#smtpd_fsm.addr,Command
 
 
 clean_email(String) -> 
-	case re:match(String,"<(.*)>") of
-		{match,Start,Length} -> string:substr(String,Start+1,Length-2);
-		{error,Reason} -> {error,Reason}
+	case re:run(String,"<(.*)>") of
+		%{match,[{0,6},{1,4}]}=re:run("<good>","<(.*)>")
+		%string:substr(String,1,1) -> "<goo"
+		%Erlang string substr doesn't go from 0 but 1 
+		{match,[{_,_},{Start,Length}]} -> string:substr(String,Start+1,Length);
+		nomatch -> nomatch
 	end.
 
 

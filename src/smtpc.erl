@@ -39,7 +39,7 @@
 
 -export([connect/1,help/1,noop/1,quit/1,rcpt/2,rset/1,vrfy/2]).
 -export([connect/2,data/2,ehlo/2,etrn/2,expn/2,helo/2,mail/2]).
--export([sendmail/3,sendmail/4,sendmail/5,sendmail/6, sendmail/9]).
+-export([sendmail/3,sendmail/4,sendmail/5,sendmail/6, sendmail/7,sendmail/9]).
 
 %%-------------------------------------------------------------------------
 %% @spec (IpAddress::term()) -> {ok,Pid::pid()} | {error,Reason::atom()}
@@ -188,6 +188,15 @@ sendmail(IPAddress,Port,Host,From,To,Message) ->
 	mail(Pid,From),
 	rcpt(Pid,To),
 	data(Pid,Message),
+	quit(Pid),
+	ok.
+
+sendmail(IPAddress,Port,Host,From,To,Subject,Message) ->
+	{ok,Pid} = connect(IPAddress,Port),
+	ehlo(Pid,Host),
+	mail(Pid,From),
+	rcpt(Pid,To),
+	data(Pid,{To,Subject,Message}),
 	quit(Pid),
 	ok.
 
