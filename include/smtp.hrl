@@ -18,8 +18,11 @@
 -define(TIMEOUT,   300000).
 
 -record(smtpc,{
+	       server = "127.0.0.1",
+	       port = 25,
                socket = [],
                auth = [],
+	       buff = <<>>,
                features = [],
                type = smtp, % smtp server type: [smtp:esmtp]
                state = helo % State of command, [helo,mail,rcpt,data]
