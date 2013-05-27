@@ -47,6 +47,7 @@
 -export([split_at/1,split_at/2,rsplit_at/1,rsplit_at/2,unquote/1]).
 -export([to_lower_atom/1]).
 -export([get_app_env/2]).
+-export([in_list_to_lower/2]).
 
 
 
@@ -231,3 +232,10 @@ check(TableName,RecordName,Type,Keys) ->
 		{error,table_not_found} -> create(TableName,RecordName,Type,Keys);
 		{error,local_node_not_in_node_list} -> join(TableName)
 	end.
+
+in_list_to_lower(Keyword,[H|T])->
+	case H =:= Keyword of 
+		true -> list_to_atom(http_util:to_lower(H));
+		_ -> in_list_to_lower(Keyword,T)
+	end;
+in_list_to_lower(Keyword,[])-> false.

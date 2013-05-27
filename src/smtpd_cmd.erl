@@ -56,10 +56,7 @@ command({helo = Command,Domain},State) when is_list(Domain), length(Domain) > 0 
 	out(Command,Domain,State),
 	send(State,250),
 	State#smtpd_fsm{host=Domain};
-command({ehlo = Command,Domain},State) when is_list(Domain), length(Domain) > 0 -> 
-	out(Command,Domain,State),
-	send(State,250),
-	State#smtpd_fsm{host=Domain};
+
 %% MAIL before HELO or EHLO
 command({mail = Command,Param},#smtpd_fsm{host = undefined} = State) ->
 	out(Command,Param,State),

@@ -27,11 +27,26 @@
                type = smtp, % smtp server type: [smtp:esmtp]
                state = helo % State of command, [helo,mail,rcpt,data]
               }).
-
+-record(smtpd_ext,{
+		name, %auth/ssl/utf-8
+		text, %STARTSSL/AUTH/8BITMIME
+		options=[]
+	}).
+%3 states is being employed here
+%cmd is currently prompted command
+%state stands for current status,for instance,if user requested mail from,it should in mail state which not available for auth or sth else
+%auth_state contains unauthenticated,pre_auth,post_auth,authenticated status to represent the stage of authentication
 -record(smtpd_fsm,{
                    socket      = [],
                    addr        = [],
                    relay       = false,
+		   type	       = smtpd,
+		   extensions  = [], %only used when under esmtp mode
+		   auth_method = plain, %plain,login,oauth,cram-md5,digest-md5
+		   auth_engine = [],
+		   auth_state  = unauthenticated, %unauthenticated,pre_auth,post_auth,authenticated
+		   tls         = false, %starttls 
+		   state       = undefined, %used for state record
                    options     = [],
                    buff        = <<>>,
                    line        = [],
@@ -50,6 +65,7 @@
                       acceptor,       % Asynchronous acceptor's internal reference
                       module          % FSM handling module
                      }).
+
 
 -record(outgoing_smtp,{
                        rcpt       = [],

@@ -46,9 +46,9 @@
 
 %% FSM States
 -export([
-    'WAIT_FOR_SOCKET'/2,
-    'WAIT_FOR_DATA'/2,
-    'WAIT_FOR_CMD'/2
+    wait_for_socket/2,
+    wait_for_data/2,
+    wait_for_cmd/2
 ]).
 
 
@@ -77,7 +77,14 @@ set_socket(Pid, Socket) when is_pid(Pid), is_port(Socket) ->
 %%-------------------------------------------------------------------------
 init([]) ->
     process_flag(trap_exit, true),
-    {ok, 'WAIT_FOR_SOCKET', #smtpd_fsm{}}.
+    Extensions=[{startssl,"STARTTLS",[]},
+	{auth,"AUTH",[{params,["PLAIN"]}]}, %params should be available methods ["PLAIN","LOGIN","CRAM-MD5"]
+	{utf8,"SMTPUTF8",[]},
+	{size,"SIZE",[]}],
+    Exts=lists:foldl(fun({Name,Text,Options}=X,Acc) ->
+			[#smtpd_ext{name=Name,text=Text,options=Options}|Acc]
+	end,[],Extensions),
+    {ok, wait_for_socket, #smtpd_fsm{extensions=Exts,auth_engine=[dummy]}}.
 
 %%-------------------------------------------------------------------------
 %% Func: StateName/2
@@ -86,7 +93,7 @@ init([]) ->
 %%          {stop, Reason, NewStateData}
 %% @private
 %%-------------------------------------------------------------------------
-'WAIT_FOR_SOCKET'({socket_ready, Socket}, State) when is_port(Socket) ->
+wait_for_socket({socket_ready, Socket}, State) when is_port(Socket) ->
     % Now we own the socket
     inet:setopts(Socket, [{active, once}, binary]),
     {ok, {IP, _Port}} = inet:peername(Socket),
@@ -94,43 +101,66 @@ init([]) ->
 	?D({relay,IP,smtpd_queue:checkip(IP)}),
 	NewState = State#smtpd_fsm{socket=Socket, addr=IP, options = DNSBL, relay = smtpd_queue:checkip(IP)},
 	NextState = smtpd_cmd:command({greeting,IP},NewState),
-    {next_state, 'WAIT_FOR_CMD', NextState, ?TIMEOUT};
-'WAIT_FOR_SOCKET'(Other, State) ->
-    error_logger:error_msg("State: 'WAIT_FOR_SOCKET'. Unexpected message: ~p\n", [Other]),
+    {next_state, wait_for_cmd, NextState, ?TIMEOUT};
+wait_for_socket(Other, State) ->
+    error_logger:error_msg("State: wait_for_socket. Unexpected message: ~p\n", [Other]),
     %% Allow to receive async messages
-    {next_state, 'WAIT_FOR_SOCKET', State}.
+    {next_state, wait_for_socket, State}.
+
+%wait_for_cmd({data,Data} , #smtpd_fsm{buff =Buff,auth_state=AuthState,auth_method=AuthMethod}=State) ->
+	%NewBuff = <<Buff/binary,Data/binary>>,
+	%case end_of_cmd(NewBuff) of
+		%0 -> {next_state, wait_for_cmd, State#smtpd_fsm{buff = NewBuff}, ?TIMEOUT};
+		%Pos -> 
+			%<<Line:Pos/binary,13,10,NextBuff/binary>> = NewBuff,
+			%case smtpd_auth:plain(NewBuff) of 
+				%true -> smtpd_cmd:command(
+
+
 
 %% Notification event coming from client
-'WAIT_FOR_CMD'({data, Data}, #smtpd_fsm{buff = Buff} = State) ->
+wait_for_cmd({data, Data}, #smtpd_fsm{buff = Buff} = State) ->
 	NewBuff = <<Buff/binary,Data/binary>>,
 	case end_of_cmd(NewBuff) of
-		0 -> {next_state, 'WAIT_FOR_CMD', State#smtpd_fsm{buff = NewBuff}, ?TIMEOUT};
+		0 -> {next_state, wait_for_cmd, State#smtpd_fsm{buff = NewBuff}, ?TIMEOUT};
 		Pos -> 
 			<<Line:Pos/binary,13,10,NextBuff/binary>> = NewBuff,
-			NextState = smtpd_cmd:command(Line,State#smtpd_fsm{line = Line}),
+			case State#smtpd_fsm.host of 
+				%This case should be HELO/EHLO
+				undefined -> 
+					<<CMD:4/binary,_/binary>> = Line,
+					case http_util:to_lower(binary:bin_to_list(CMD)) of
+						"ehlo" -> Type=esmtpd;
+						_ -> Type=smtpd
+					end;
+				_ -> Type=State#smtpd_fsm.type
+			end,
+			MOD=list_to_atom(atom_to_list(Type)++"_cmd"),
+			?D({module,MOD}),
+			NextState = MOD:command(Line,State#smtpd_fsm{line = Line,type=Type}),
 			case NextState#smtpd_fsm.data of
-				undefined -> {next_state, 'WAIT_FOR_CMD', NextState#smtpd_fsm{buff = NextBuff}, ?TIMEOUT};
-				<<>> -> {next_state, 'WAIT_FOR_DATA', NextState#smtpd_fsm{buff = NextBuff}, ?TIMEOUT}
+				undefined -> {next_state, wait_for_cmd, NextState#smtpd_fsm{buff = NextBuff}, ?TIMEOUT};
+				<<>> -> {next_state, wait_for_data, NextState#smtpd_fsm{buff = NextBuff}, ?TIMEOUT}
 			end
 			
 	end;
 
-'WAIT_FOR_CMD'(timeout, State) ->
+wait_for_cmd(timeout, State) ->
     error_logger:error_msg("~p Client connection timeout - closing.\n", [self()]),
     {stop, normal, State};
 
-'WAIT_FOR_CMD'(Data, State) ->
+wait_for_cmd(Data, State) ->
     io:format("~p Ignoring data: ~p\n", [self(), Data]),
-    {next_state, 'WAIT_FOR_CMD', State, ?TIMEOUT}.
+    {next_state, wait_for_cmd, State, ?TIMEOUT}.
 
 
 
 
 %% Notification event coming from client
-'WAIT_FOR_DATA'({data, Data}, #smtpd_fsm{buff = Buff} = State) ->
+wait_for_data({data, Data}, #smtpd_fsm{buff = Buff} = State) ->
 	NewBuff = <<Buff/binary,Data/binary>>,
 	case end_of_data(NewBuff) of
-		0 -> {next_state, 'WAIT_FOR_DATA', State#smtpd_fsm{buff = NewBuff}, ?TIMEOUT};
+		0 -> {next_state, wait_for_data, State#smtpd_fsm{buff = NewBuff}, ?TIMEOUT};
 		Pos -> % wait for end of data and return data in state.
 			<<Message:Pos/binary,13,10,46,13,10,NextBuff/binary>> = NewBuff,
 			% @todo Check return value of store_message to see if it fails
@@ -144,16 +174,16 @@ init([]) ->
 								   to    = undefined,
 								   messagename = undefined,
 								   data  = undefined},
-			{next_state, 'WAIT_FOR_CMD', NextState#smtpd_fsm{buff = NextBuff}, ?TIMEOUT}
+			{next_state, wait_for_cmd, NextState#smtpd_fsm{buff = NextBuff}, ?TIMEOUT}
 	end;
 
-'WAIT_FOR_DATA'(timeout, State) ->
+wait_for_data(timeout, State) ->
 %    error_logger:error_msg("~p Client connection timeout - closing.\n", [self()]),
     {stop, normal, State};
 
-'WAIT_FOR_DATA'(Data, State) ->
+wait_for_data(Data, State) ->
     io:format("~p Ignoring data: ~p\n", [self(), Data]),
-    {next_state, 'WAIT_FOR_DATA', State, ?TIMEOUT}.
+    {next_state, wait_for_data, State, ?TIMEOUT}.
 
 %%-------------------------------------------------------------------------
 %% Func: handle_event/3
