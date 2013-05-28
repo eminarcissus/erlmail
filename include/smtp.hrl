@@ -43,7 +43,7 @@
 		   type	       = smtpd,
 		   extensions  = [], %only used when under esmtp mode
 		   auth_method = plain, %plain,login,oauth,cram-md5,digest-md5
-		   auth_engine = [],
+		   auth_engine = dummy_auth, %should define a gen_auth module to implement auth engine later
 		   auth_state  = unauthenticated, %unauthenticated,pre_auth,post_auth,authenticated
 		   tls         = false, %starttls 
 		   state       = undefined, %used for state record

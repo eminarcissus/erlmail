@@ -84,7 +84,7 @@ init([]) ->
     Exts=lists:foldl(fun({Name,Text,Options}=X,Acc) ->
 			[#smtpd_ext{name=Name,text=Text,options=Options}|Acc]
 	end,[],Extensions),
-    {ok, wait_for_socket, #smtpd_fsm{extensions=Exts,auth_engine=[dummy]}}.
+    {ok, wait_for_socket, #smtpd_fsm{extensions=Exts,auth_engine=dummy_auth}}.
 
 %%-------------------------------------------------------------------------
 %% Func: StateName/2
@@ -107,14 +107,7 @@ wait_for_socket(Other, State) ->
     %% Allow to receive async messages
     {next_state, wait_for_socket, State}.
 
-%wait_for_cmd({data,Data} , #smtpd_fsm{buff =Buff,auth_state=AuthState,auth_method=AuthMethod}=State) ->
-	%NewBuff = <<Buff/binary,Data/binary>>,
-	%case end_of_cmd(NewBuff) of
-		%0 -> {next_state, wait_for_cmd, State#smtpd_fsm{buff = NewBuff}, ?TIMEOUT};
-		%Pos -> 
-			%<<Line:Pos/binary,13,10,NextBuff/binary>> = NewBuff,
-			%case smtpd_auth:plain(NewBuff) of 
-				%true -> smtpd_cmd:command(
+
 
 
 
