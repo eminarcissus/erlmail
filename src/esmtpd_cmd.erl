@@ -75,6 +75,8 @@ command({ehlo = Command,Domain},State) when is_list(Domain), length(Domain) > 0 
 	NewState=State#smtpd_fsm{host=Domain,cmd=ehlo},
 	send(extension,NewState),
 	NewState#smtpd_fsm{cmd=undefined,state=ehlo};
+%Auth should have aggresive mode(AUTH PLAIN base64(username/0username/0password)) and normal mode(AUTH XXXX) ,responde -> challenge
+%Normal Mode
 command({auth = Command,Method},#smtpd_fsm{auth_state=unauthenticated,extensions=Extensions}=State) when is_list(Method) ->
 	Auth=get_ext(auth,Extensions),
 	{value,{params,AvailableMethod}}=lists:keysearch(params,1,Auth#smtpd_ext.options),
@@ -85,10 +87,28 @@ command({auth = Command,Method},#smtpd_fsm{auth_state=unauthenticated,extensions
 		M -> 
 			%?D([Command,M]),
 			out(Command,M,State),
-			NewState=State#smtpd_fsm{cmd=auth,auth_method=M},
+			NewState=State#smtpd_fsm{state=auth,auth_method=M},
 			send(extension,NewState,334),
 			NewState#smtpd_fsm{cmd=undefined,state=auth,auth_state=pre_auth}
 	end;
+%Aggressive Mode
+%Right now I just copied the logic of normal mode, should find a way to make a general one
+command({auth = Command,Method,Info},#smtpd_fsm{auth_state=unauthenticated,extensions=Extensions}=State) when is_list(Method), is_list(Info) ->
+	Auth=get_ext(auth,Extensions),
+	{value,{params,AvailableMethod}}=lists:keysearch(params,1,Auth#smtpd_ext.options),
+	case erlmail_util:in_list_to_lower(Method,AvailableMethod) of	
+		false -> 
+			send(extension,State#smtpd_fsm{cmd=auth},504),
+			State;
+		M -> 
+			%?D([Command,M]),
+			%out(Command,M,State),
+			NewState=State#smtpd_fsm{state=auth,auth_method=M,auth_state=pre_auth},
+			command(list_to_binary(Info),NewState)
+	end;
+
+
+
 %% MAIL before HELO or EHLO
 command({mail = Command,Param},#smtpd_fsm{host = undefined} = State) ->
 	out(Command,Param,State),
@@ -285,8 +305,23 @@ parse(Line) when is_list(Line)  ->
 		0 -> {list_to_atom(http_util:to_lower(Line)),[]};
 		Pos ->
 			{Command,RespText} = lists:split(Pos-1,Line),
-			{list_to_atom(http_util:to_lower(Command)),string:strip(RespText)}
+			?D([Command]),
+			case list_to_atom(http_util:to_lower(Command)) of
+					auth -> parse(auth,string:strip(RespText));
+					CMD -> {CMD,string:strip(RespText)}
+			end
 	end.
+parse(auth,RespText) ->
+	case string:chr(RespText,32) of
+		0 -> 
+			?D(["Normal mode"]),
+			{auth,string:strip(RespText)};
+	Pos ->
+		{Method,Info} = lists:split(Pos-1,RespText),
+		?D(["Aggressive Mode",Method,Info]),
+		{auth,Method,string:strip(Info)}
+	end.
+
 
 
 out(Command,State) -> io:format("~p ~p~n",[State#smtpd_fsm.addr,Command]).
