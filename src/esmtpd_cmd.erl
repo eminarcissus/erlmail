@@ -49,15 +49,15 @@ command(Line,#smtpd_fsm{state=auth,auth_method=AuthMethod,auth_state=AuthState,a
 	%Right now only plain support
 	%So will not consider following stagse.but in fact here should be cut into different phases
 	case Engine:AuthMethod(Line,AuthState) of 
-		true ->
+		{true,Code} ->
 			%When authenticated, it should return back to EHLO state
 			NewState=State#smtpd_fsm{auth_state=authenticated},
-			send(extension,NewState,235),
+			send(extension,NewState,Code),
 			NewState#smtpd_fsm{cmd=undefined,state=ehlo};
-		false ->
+		{false,Code} ->
 			NewState=State#smtpd_fsm{auth_state=failed},
-			send(extension,NewState,535),
-			NewState#smtpd_fsm{cmd=undefined,state=ehlo}
+			send(extension,NewState,Code),
+			NewState#smtpd_fsm{cmd=undefined,state=ehlo,auth_state=unauthenticated}
 	end;
 	
 command(Line,State) when is_binary(Line) -> command(parse(Line),State);
@@ -70,7 +70,7 @@ command({greeting,_},State) ->
 
 %ehlo should be put into a new esmtp_cmd file to handle user request
 command({ehlo = Command,Domain},State) when is_list(Domain), length(Domain) > 0 -> 
-	?D([Command,Domain,State]),
+	%?D([Command,Domain,State]),
 	out(Command,Domain,State),
 	NewState=State#smtpd_fsm{host=Domain,cmd=ehlo},
 	send(extension,NewState),
@@ -83,7 +83,7 @@ command({auth = Command,Method},#smtpd_fsm{auth_state=unauthenticated,extensions
 			send(extension,State#smtpd_fsm{cmd=auth},504),
 			State;
 		M -> 
-			?D([Command,M]),
+			%?D([Command,M]),
 			out(Command,M,State),
 			NewState=State#smtpd_fsm{cmd=auth,auth_method=M},
 			send(extension,NewState,334),
@@ -315,6 +315,9 @@ resp(auth,454,{_,failed}) -> "Temporary authentication failure";
 resp(auth,534,{_,failed}) -> "Authentication mechanism is too weak";
 resp(auth,535,{_,failed}) -> "Authentication credentials invalid";
 resp(auth,500,{_,failed}) -> "Authentication Exchange line is too long";
+resp(auth,501,{_,failed}) -> "Authentication canceled";
+resp(auth,503,{_,failed}) -> "Already authenticated";
+resp(auth,535,{_,failed}) -> "Unable to authenticate";
 resp(auth,538,{_,failed}) -> "Encryption required for requested authentication mechanism";
 %This should returned by requested any other commands except for auth command when auth is prerequisite for 
 resp(_,530,{_,failed}) -> "Authentication required";

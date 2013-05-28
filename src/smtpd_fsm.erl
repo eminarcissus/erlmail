@@ -81,7 +81,7 @@ init([]) ->
 	{auth,"AUTH",[{params,["PLAIN"]}]}, %params should be available methods ["PLAIN","LOGIN","CRAM-MD5"]
 	{utf8,"SMTPUTF8",[]},
 	{size,"SIZE",[]}],
-    Exts=lists:foldl(fun({Name,Text,Options}=X,Acc) ->
+    Exts=lists:foldl(fun({Name,Text,Options},Acc) ->
 			[#smtpd_ext{name=Name,text=Text,options=Options}|Acc]
 	end,[],Extensions),
     {ok, wait_for_socket, #smtpd_fsm{extensions=Exts,auth_engine=dummy_auth}}.
@@ -244,6 +244,18 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 
 end_of_cmd(Bin) ->
 	List = binary_to_list(Bin),
+	%FIXME : According to http://tools.ietf.org/rfc/rfc4954.txt 
+	%This
+	%requirement is independent of any line length limitations the
+        %client or server may have in other parts of its protocol
+        %implementation.  (At the time of writing of this document,
+        %12288 octets is considered to be a sufficient line length
+        %limit for handling of deployed authentication mechanisms.)
+        %If, during an authentication exchange, the server receives a
+        %line that is longer than the server's authentication buffer,
+        %the server fails the AUTH command with the 500 reply.  Servers
+        %using the enhanced status codes extension [ESMTP-CODES] SHOULD
+        %return an enhanced status code of 5.5.6 in this case.
 	case string:str(List,?CRLF) of
 		0 -> 0;
 		Pos -> Pos - 1
