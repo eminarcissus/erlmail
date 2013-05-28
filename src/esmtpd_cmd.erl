@@ -75,6 +75,18 @@ command({ehlo = Command,Domain},State) when is_list(Domain), length(Domain) > 0 
 	NewState=State#smtpd_fsm{host=Domain,cmd=ehlo},
 	send(extension,NewState),
 	NewState#smtpd_fsm{cmd=undefined,state=ehlo};
+command({starttls = Command,[]},#smtpd_fsm{tls=false}=State) ->
+	NewState=State#smtpd_fsm{cmd=starttls},
+	send(extension,NewState),
+	case start_tls(NewState) of 
+		{ok,SSLSocket} -> 
+			NewState#smtpd_fsm{cmd=undefined,ssl_socket=SSLSocket,tls=true};
+		{error,Reason} ->
+			?D(["SSL Start error",Reason]),
+			State
+	end;
+
+
 %Auth should have aggresive mode(AUTH PLAIN base64(username/0username/0password)) and normal mode(AUTH XXXX) ,responde -> challenge
 %Normal Mode
 command({auth = Command,Method},#smtpd_fsm{auth_state=unauthenticated,extensions=Extensions}=State) when is_list(Method) ->
@@ -255,16 +267,9 @@ store_message(MessageName,{UserName,DomainName},Message,#smtpd_fsm{relay = false
 		name={MessageName,UserName,DomainName},
 		message=Message},State).
 
-
-
-
-
-
-
-
-
-
 send(#smtpd_fsm{cmd=ehlo}=State,250) -> send(extension,State) ;
+send(extension,#smtpd_fsm{cmd=starttls}=State) ->
+	send_msg(resp(starttls,220,{}),220,State);
 send(extension,#smtpd_fsm{socket=Socket,cmd=ehlo,extensions=Extensions}=State) -> 
 	[Head|Tail]=Extensions,
 	EHLO_RES="250 "++Head#smtpd_ext.text++?CRLF,
@@ -278,22 +283,15 @@ send(extension,#smtpd_fsm{socket=Socket,cmd=ehlo,extensions=Extensions}=State) -
 			    ([],Acc) ->
 				Acc
 		end,EHLO_RES,Tail),
-	gen_tcp:send(Socket,Res2);
+	send_msg(Res2,State);
 send(State,Code) -> send(State,Code,resp(Code)).
 send(State,Code,[]) -> send(State,Code,resp(Code));
 %Respond to user (auth,foo/login/plain) commands
 send(extension,#smtpd_fsm{cmd=auth,auth_method=AuthMethod,auth_state=AuthState}=State,Code)->
-	send(State#smtpd_fsm.socket,Code,resp(auth,Code,{AuthMethod,AuthState}));
+	send_msg(resp(auth,Code,{AuthMethod,AuthState}),Code,State);
 send(extension,#smtpd_fsm{state=auth,auth_method=AuthMethod,auth_state=AuthState}=State,Code) ->
-	send(State#smtpd_fsm.socket,Code,resp(auth,Code,{AuthMethod,AuthState}));
-send(State,Code,Message) when is_record(State,smtpd_fsm) -> send(State#smtpd_fsm.socket,Code,Message);
-send(Socket,Code,Message) ->
-	Last = string:right(Message,2),
-	Msg = case Last of
-		?CRLF -> [integer_to_list(Code),32,Message];
-		_      -> [integer_to_list(Code),32,Message,?CRLF]
-	end,
-	gen_tcp:send(Socket,Msg).
+	send_msg(resp(auth,Code,{AuthMethod,AuthState}),Code,State);
+send(State,Code,Message) when is_record(State,smtpd_fsm) -> send(Message,Code,State).
 
 
 
@@ -305,7 +303,7 @@ parse(Line) when is_list(Line)  ->
 		0 -> {list_to_atom(http_util:to_lower(Line)),[]};
 		Pos ->
 			{Command,RespText} = lists:split(Pos-1,Line),
-			?D([Command]),
+			%?D([Command]),
 			case list_to_atom(http_util:to_lower(Command)) of
 					auth -> parse(auth,string:strip(RespText));
 					CMD -> {CMD,string:strip(RespText)}
@@ -314,11 +312,11 @@ parse(Line) when is_list(Line)  ->
 parse(auth,RespText) ->
 	case string:chr(RespText,32) of
 		0 -> 
-			?D(["Normal mode"]),
+			%?D(["Normal mode"]),
 			{auth,string:strip(RespText)};
 	Pos ->
 		{Method,Info} = lists:split(Pos-1,RespText),
-		?D(["Aggressive Mode",Method,Info]),
+		%?D(["Aggressive Mode",Method,Info]),
 		{auth,Method,string:strip(Info)}
 	end.
 
@@ -357,6 +355,8 @@ resp(auth,538,{_,failed}) -> "Encryption required for requested authentication m
 %This should returned by requested any other commands except for auth command when auth is prerequisite for 
 resp(_,530,{_,failed}) -> "Authentication required";
 
+resp(starttls,220,_) -> "Go ahead";
+
 
 
 resp(_,_,_) -> ?D("unknown command").
@@ -390,3 +390,25 @@ get_ext(Name,[Ext|Tail]) ->
 	get_ext(Name,Tail);
 get_ext(Name,[]) ->
 	undefined.
+start_tls(State) ->
+	ssl:start(),
+	CAFile="./cert/ca.crt",
+	Cert="./cert/server.crt",
+	Key ="./cert/server.key",
+	ssl:ssl_accept(State#smtpd_fsm.socket,[{cacertfile,CAFile},{certfile,Cert }, {keyfile,Key}]).
+	
+send_msg(Msg,#smtpd_fsm{socket=Socket,ssl_socket=SSLSocket}=State) ->
+	case State#smtpd_fsm.tls of 
+		true -> ssl:send(SSLSocket,Msg);
+		false -> gen_tcp:send(Socket,Msg)
+	end.
+send_msg(Message,Code,#smtpd_fsm{socket=Socket,ssl_socket=SSLSocket}=State) ->
+	Last = string:right(Message,2),
+	Msg = case Last of
+		?CRLF -> [integer_to_list(Code),32,Message];
+		_      -> [integer_to_list(Code),32,Message,?CRLF]
+	end,
+	case State#smtpd_fsm.tls of 
+		true -> ssl:send(SSLSocket,Msg);
+		false -> gen_tcp:send(Socket,Msg)
+	end.

@@ -210,6 +210,10 @@ handle_sync_event(Event, _From, StateName, StateData) ->
 %%          {stop, Reason, NewStateData}
 %% @private
 %%-------------------------------------------------------------------------
+
+handle_info({ssl, SSLSocket, Bin},StateName,#smtpd_fsm{ssl_socket=SSLSocket,tls=true} =StateData) ->
+	ssl:setopts(SSLSocket,[{active,once}]),
+	?MODULE:StateName({data,Bin},StateData);
 handle_info({tcp, Socket, Bin}, StateName, #smtpd_fsm{socket=Socket} = StateData) ->
     % Flow control: enable forwarding of next TCP message
     inet:setopts(Socket, [{active, once}]),

@@ -46,6 +46,7 @@
 		   auth_engine = dummy_auth, %should define a gen_auth module to implement auth engine later
 		   auth_state  = unauthenticated, %unauthenticated,pre_auth,post_auth,authenticated
 		   tls         = false, %starttls 
+		   ssl_socket  = [],
 		   state       = undefined, %used for state record
                    options     = [],
                    buff        = <<>>,
