@@ -44,47 +44,44 @@
 -export([start_client/0]).
 
 start_link() ->
-    ListenPort = erlmail_util:get_app_env(server_smtp_port, 8025),
-	FSM = erlmail_util:get_app_env(server_smtp_fsm, smtpd_fsm),
-    supervisor:start_link({local, ?MODULE}, ?MODULE, [ListenPort, FSM]).
+	ListenPort = erlmail_util:get_app_env(server_smtp_port, 8025),
+	Protocol = erlmail_util:get_app_env(server_smtp_protocol,tcp),
+	Module = erlmail_util:get_app_env(smtp_handler, smtp_session_handler),
+	Certfile = erlmail_util:get_app_env(ssl_cert,"./cert/server.crt"),
+	Keyfile = erlmail_util:get_app_env(ssl_key,"./cert/server.key"),
+	SMTP_OPTION=[
+		[{port,ListenPort},
+		{protocol,Protocol},
+		{certfile,Certfile}, %ssl listener option
+		{keyfile,Keyfile}, %ssl listener option
+		{sessionoptions,
+		[
+			{certfile,Certfile},
+			{keyfile,Keyfile},
+			{callbackoptions,[
+			{auth,true}
+			]}
+		]}
+	]
+	],
+
+    	supervisor:start_link({local, ?MODULE}, ?MODULE, [Module,SMTP_OPTION]).
 
 %% A startup function for spawning new client connection handling FSM.
 %% To be called by the TCP listener process.
 start_client() -> supervisor:start_child(smtpd_client_sup, []).
 
 
-init([Port, Module]) ->
+init([Module,Option]) ->
     {ok,
         {_SupFlags = {one_for_one, ?MAX_RESTART, ?MAX_TIME},
-            [% SMTPD Listener
-              {smtpd_listener,
-               {smtpd_listener,start_link,[Port,Module]},
+            [% gen_smtp_server
+              {gen_smtp_server,
+               {gen_smtp_server,start_link,[Module,Option]},
                permanent,
                2000,
                worker,
-               [smtpd_listener]
-              }, % Client instance supervisor
-              {smtpd_client_sup,
-               {supervisor,start_link,[{local, smtpd_client_sup}, ?MODULE, [Module]]},
-               permanent,
-               infinity,
-               supervisor,
-               []
-              }
-            ]
-        }
-    };
-
-init([Module]) ->
-    {ok,
-        {_SupFlags = {simple_one_for_one, ?MAX_RESTART, ?MAX_TIME},
-            [% SMTPD Client
-              {undefined,
-               {Module,start_link,[]},
-               temporary,
-               2000,
-               worker,
-               []
+               [gen_smtp_server]
               }
             ]
         }
