@@ -285,13 +285,12 @@ send(extension,#smtpd_fsm{socket=Socket,cmd=ehlo,extensions=Extensions}=State) -
 		end,EHLO_RES,Tail),
 	send_msg(Res2,State);
 send(State,Code) -> send(State,Code,resp(Code)).
-send(State,Code,[]) -> send(State,Code,resp(Code));
 %Respond to user (auth,foo/login/plain) commands
 send(extension,#smtpd_fsm{cmd=auth,auth_method=AuthMethod,auth_state=AuthState}=State,Code)->
 	send_msg(resp(auth,Code,{AuthMethod,AuthState}),Code,State);
 send(extension,#smtpd_fsm{state=auth,auth_method=AuthMethod,auth_state=AuthState}=State,Code) ->
 	send_msg(resp(auth,Code,{AuthMethod,AuthState}),Code,State);
-send(State,Code,Message) when is_record(State,smtpd_fsm) -> send(Message,Code,State).
+send(State,Code,Message) when is_record(State,smtpd_fsm) -> send_msg(Message,Code,State).
 
 
 
